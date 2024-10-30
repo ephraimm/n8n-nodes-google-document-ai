@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-google-document-ai",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "n8n community node for Google Document AI",
   "keywords": [
     "n8n-community-node-package",

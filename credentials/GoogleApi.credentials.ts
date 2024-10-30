@@ -8,7 +8,7 @@ import {
 export class GoogleApi implements ICredentialType {
 	name = 'googleApi';
 	displayName = 'Google API';
-	documentationUrl = 'google';
+	documentationUrl = 'https://cloud.google.com/docs/authentication/application-default-credentials';
 	icon: Icon = 'file:icons/Google.svg';
 	properties: INodeProperties[] = [
 		{
@@ -24,6 +24,7 @@ export class GoogleApi implements ICredentialType {
 			displayName: 'Private Key',
 			name: 'privateKey',
 			type: 'string',
+			typeOptions: { password: true },
 			default: '',
 			description: 'Use the multiline editor. Make sure there are exactly 3 lines.<br />-----BEGIN PRIVATE KEY-----<br />KEY IN A SINGLE LINE<br />-----END PRIVATE KEY-----',
 			required: true,
