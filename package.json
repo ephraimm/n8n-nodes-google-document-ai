@@ -1,19 +1,23 @@
 {
-  "name": "n8n-nodes-<...>",
-  "version": "0.1.0",
-  "description": "",
+  "name": "n8n-nodes-google-document-ai",
+  "version": "1.2.0",
+  "description": "n8n community node for Google Document AI",
   "keywords": [
-    "n8n-community-node-package"
+    "n8n-community-node-package",
+    "google",
+    "document ai",
+    "ocr",
+    "document processing"
   ],
   "license": "MIT",
-  "homepage": "",
+  "homepage": "https://github.com/ephraimm/n8n-nodes-google-document-ai",
   "author": {
-    "name": "",
-    "email": ""
+    "name": "Ephraim M",
+    "email": "ephraim@example.com"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/<...>/n8n-nodes-<...>.git"
+    "url": "https://github.com/ephraimm/n8n-nodes-google-document-ai.git"
   },
   "engines": {
     "node": ">=18.10",
@@ -36,12 +40,10 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
-      "dist/credentials/ExampleCredentialsApi.credentials.js",
-      "dist/credentials/HttpBinApi.credentials.js"
+      "dist/credentials/GoogleApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/ExampleNode/ExampleNode.node.js",
-      "dist/nodes/HttpBin/HttpBin.node.js"
+      "dist/nodes/GoogleDocumentAI/GoogleDocumentAI.node.js"
     ]
   },
   "devDependencies": {
@@ -55,5 +57,8 @@
   },
   "peerDependencies": {
     "n8n-workflow": "*"
+  },
+  "dependencies": {
+    "@google-cloud/documentai": "^8.11.0"
   }
 }
