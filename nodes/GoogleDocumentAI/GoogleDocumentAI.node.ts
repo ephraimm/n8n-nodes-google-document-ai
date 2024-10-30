@@ -1,25 +1,32 @@
 import type {
 	IExecuteFunctions,
+	IExecuteFunctionsLocal,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
-import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import { DocumentProcessorServiceClient } from '@google-cloud/documentai/build/src/v1beta3';
+
+declare module 'n8n-workflow' {
+	interface IExecuteFunctionsLocal extends IExecuteFunctions {
+		processPageData(page: any, fullText: string): any;
+		getText(textAnchor: any, text: string): string;
+	}
+}
 
 export class GoogleDocumentAI implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Google Document AI OCR',
-		name: 'googleDocumentAI',
+		name: 'googleDocumentAi',
 		group: ['transform'],
 		version: 1,
 		description: 'Extract text from documents using Google Document AI OCR',
 		defaults: {
 			name: 'Google Document AI OCR',
-			color: '#4285F4',
 		},
-		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main],
+		inputs: ['main'],
+		outputs: ['main'],
 		credentials: [
 			{
 				name: 'googleApi',
@@ -106,7 +113,7 @@ export class GoogleDocumentAI implements INodeType {
 		],
 	};
 
-	private getText(textAnchor: any, text: string): string {
+	getText(this: IExecuteFunctionsLocal, textAnchor: any, text: string): string {
 		if (!textAnchor.textSegments || textAnchor.textSegments.length === 0) {
 			return '';
 		}
@@ -117,7 +124,7 @@ export class GoogleDocumentAI implements INodeType {
 		return text.substring(startIndex, endIndex);
 	}
 
-	private processPageData(page: any, fullText: string) {
+	processPageData(this: IExecuteFunctionsLocal, page: any, fullText: string): any {
 		return {
 			pageNumber: page.pageNumber,
 			dimension: {
@@ -144,7 +151,7 @@ export class GoogleDocumentAI implements INodeType {
 		};
 	}
 
-	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+	async execute(this: IExecuteFunctionsLocal): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
@@ -187,13 +194,17 @@ export class GoogleDocumentAI implements INodeType {
 				});
 
 				const { document } = result;
-				const { text } = document;
+
+				// Add proper type checking for document and text
+				if (!document || typeof document.text !== 'string') {
+					throw new NodeOperationError(this.getNode(), 'Document or document text is invalid');
+				}
 
 				const processedData = {
-					text,
-					pageCount: document.pages.length,
-					pages: document.pages.map((page: any) => this.processPageData(page, text)),
-					entities: document.entities,
+					text: document.text,
+					pageCount: document.pages?.length ?? 0,
+					pages: document.pages?.map((page: any) => this.processPageData(page, document.text!)) ?? [],
+					entities: document.entities ?? [],
 				};
 
 				returnData.push({
@@ -202,11 +213,11 @@ export class GoogleDocumentAI implements INodeType {
 			} catch (error) {
 				if (this.continueOnFail()) {
 					returnData.push({
-						json: {
-							error: error.message,
-						},
-						pairedItem: itemIndex,
-					});
+							json: {
+								error: error.message,
+							},
+							pairedItem: itemIndex,
+						});
 				} else {
 					throw new NodeOperationError(this.getNode(), error, {
 						itemIndex,
