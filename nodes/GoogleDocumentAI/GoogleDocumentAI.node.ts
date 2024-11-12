@@ -200,6 +200,22 @@ export class GoogleDocumentAI implements INodeType {
 					throw new NodeOperationError(this.getNode(), 'Document or document text is invalid');
 				}
 
+				console.log('document', document);
+				
+				console.log('Document contents:', {
+					text: document.text,
+					pages: document.pages,
+					entities: document.entities,
+					mimeType: document.mimeType,
+					uri: document.uri,
+					textStyles: document.textStyles,
+					textChanges: document.textChanges,
+					revisions: document.revisions,
+				});
+
+				console.log('processPageData', this.processPageData);
+				
+
 				const processedData = {
 					text: document.text,
 					pageCount: document.pages?.length ?? 0,
