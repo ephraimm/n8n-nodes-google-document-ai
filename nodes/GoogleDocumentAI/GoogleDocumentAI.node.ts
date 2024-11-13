@@ -6,8 +6,9 @@ import type {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import { DocumentProcessorServiceClient } from '@google-cloud/documentai/build/src/v1beta3';
+import vision from '@google-cloud/vision';
 
+// Extend the IExecuteFunctionsLocal interface to include custom methods
 declare module 'n8n-workflow' {
 	interface IExecuteFunctionsLocal extends IExecuteFunctions {
 		processPageData(page: any, fullText: string): any;
@@ -19,6 +20,7 @@ export class GoogleDocumentAI implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Google Document AI OCR',
 		name: 'googleDocumentAi',
+		icon: 'file:icons/google-vision-ai.svg',
 		group: ['transform'],
 		version: 1,
 		description: 'Extract text from documents using Google Document AI OCR',
@@ -29,44 +31,12 @@ export class GoogleDocumentAI implements INodeType {
 		outputs: ['main'],
 		credentials: [
 			{
-				name: 'googleApi',
+				name: 'googleServiceAccount',
 				required: true,
 			},
 		],
+		// Node properties define the UI configuration and input parameters
 		properties: [
-			{
-				displayName: 'Project ID',
-				name: 'projectId',
-				type: 'string',
-				default: '',
-				required: true,
-				description: 'Google Cloud Project ID where Document AI is enabled',
-			},
-			{
-				displayName: 'Location',
-				name: 'location',
-				type: 'options',
-				options: [
-					{
-						name: 'United States',
-						value: 'us',
-					},
-					{
-						name: 'European Union',
-						value: 'eu',
-					},
-				],
-				default: 'us',
-				description: 'Location of the Document AI processor',
-			},
-			{
-				displayName: 'Processor ID',
-				name: 'processorId',
-				type: 'string',
-				default: '',
-				required: true,
-				description: 'ID of the Document AI processor to use',
-			},
 			{
 				displayName: 'Input Type',
 				name: 'inputType',
@@ -77,8 +47,8 @@ export class GoogleDocumentAI implements INodeType {
 						value: 'binaryFile',
 					},
 					{
-						name: 'Base64 String',
-						value: 'base64',
+						name: 'File Path', 
+						value: 'filePath',
 					},
 				],
 				default: 'binaryFile',
@@ -98,145 +68,90 @@ export class GoogleDocumentAI implements INodeType {
 				description: 'Name of the binary property containing the document file',
 			},
 			{
-				displayName: 'Base64 Content',
-				name: 'base64Content',
+				displayName: 'File Path',
+				name: 'filePath',
 				type: 'string',
 				default: '',
 				required: true,
 				displayOptions: {
 					show: {
-						inputType: ['base64'],
-					},
+						inputType: ['filePath']
+					}
 				},
-				description: 'Base64-encoded content of the document',
-			},
+				description: 'Path to the document file',
+			}
 		],
 	};
 
-	getText(this: IExecuteFunctionsLocal, textAnchor: any, text: string): string {
-		if (!textAnchor.textSegments || textAnchor.textSegments.length === 0) {
-			return '';
-		}
-
-		const startIndex = textAnchor.textSegments[0].startIndex || 0;
-		const endIndex = textAnchor.textSegments[0].endIndex;
-
-		return text.substring(startIndex, endIndex);
-	}
-
-	processPageData(this: IExecuteFunctionsLocal, page: any, fullText: string): any {
-		return {
-			pageNumber: page.pageNumber,
-			dimension: {
-				width: page.dimension.width,
-				height: page.dimension.height,
-			},
-			detectedLanguages: page.detectedLanguages.map((lang: any) => ({
-				languageCode: lang.languageCode,
-				confidence: lang.confidence,
-			})),
-			paragraphs: page.paragraphs.map((para: any) => ({
-				text: this.getText(para.layout.textAnchor, fullText),
-			})),
-			blocks: page.blocks.map((block: any) => ({
-				text: this.getText(block.layout.textAnchor, fullText),
-			})),
-			lines: page.lines.map((line: any) => ({
-				text: this.getText(line.layout.textAnchor, fullText),
-			})),
-			tokens: page.tokens.map((token: any) => ({
-				text: this.getText(token.layout.textAnchor, fullText),
-				breakType: token.detectedBreak?.type,
-			})),
-		};
-	}
-
+	/**
+	 * Main execution method for the node
+	 */
 	async execute(this: IExecuteFunctionsLocal): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
+		// Initialize Google Vision client with service account credentials
+		const credentials = await this.getCredentials('googleServiceAccount');
+		const serviceAccountKey = JSON.parse(credentials.serviceAccountKey as string);
+		const client = new vision.ImageAnnotatorClient({
+			credentials: serviceAccountKey
+		});
+
+		let result: any;
+
+		// Process each input item
 		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
 			try {
-				// Get parameters
-				const projectId = this.getNodeParameter('projectId', itemIndex) as string;
-				const location = this.getNodeParameter('location', itemIndex) as string;
-				const processorId = this.getNodeParameter('processorId', itemIndex) as string;
 				const inputType = this.getNodeParameter('inputType', itemIndex) as string;
 
-				// Get document content based on input type
-				let documentContent: string;
-				let mimeType: string;
-
+				// Handle different input types
 				if (inputType === 'binaryFile') {
+					// Process binary file input
 					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', itemIndex) as string;
-					const binaryData = this.helpers.assertBinaryData(itemIndex, binaryPropertyName);
-					documentContent = binaryData.data;
-					mimeType = binaryData.mimeType;
+					const buffer = await this.helpers.getBinaryDataBuffer(itemIndex, binaryPropertyName);
+					[result] = await client.textDetection(buffer);
 				} else {
-					documentContent = this.getNodeParameter('base64Content', itemIndex) as string;
-					// Attempt to determine mime type from base64 header or default to PDF
-					mimeType = documentContent.startsWith('/9j/') ? 'image/jpeg' : 
-						documentContent.startsWith('iVBORw0KGgo') ? 'image/png' : 
-						'application/pdf';
+					// Process file path input
+					const filePath = this.getNodeParameter('filePath', itemIndex) as string;
+					[result] = await client.textDetection(filePath);
 				}
 
-				// Initialize Document AI client
-				const client = new DocumentProcessorServiceClient();
-				const name = `projects/${projectId}/locations/${location}/processors/${processorId}`;
-
-				// Process document
-				const [result] = await client.processDocument({
-					name,
-					rawDocument: {
-						content: documentContent,
-						mimeType,
-					},
-				});
-
-				const { document } = result;
-
-				// Add proper type checking for document and text
-				if (!document || typeof document.text !== 'string') {
+				// Extract and validate text annotations
+				const { textAnnotations } = result;
+				if (!textAnnotations || typeof textAnnotations[0]?.description !== 'string') {
 					throw new NodeOperationError(this.getNode(), 'Document or document text is invalid');
 				}
 
-				console.log('document', document);
-				
-				console.log('Document contents:', {
-					text: document.text,
-					pages: document.pages,
-					entities: document.entities,
-					mimeType: document.mimeType,
-					uri: document.uri,
-					textStyles: document.textStyles,
-					textChanges: document.textChanges,
-					revisions: document.revisions,
-				});
-
-				console.log('processPageData', this.processPageData);
-				
-
-				const processedData = {
-					text: document.text,
-					pageCount: document.pages?.length ?? 0,
-					pages: document.pages?.map((page: any) => this.processPageData(page, document.text!)) ?? [],
-					entities: document.entities ?? [],
-				};
-
+				// Format and return the extracted text annotations
 				returnData.push({
-					json: processedData,
+					json: {
+						textAnnotations: textAnnotations.map((annotation: any) => ({
+							mid: annotation?.mid,
+							locale: annotation?.locale,
+							description: annotation?.description,
+							score: annotation?.score,
+							confidence: annotation?.confidence,
+							topicality: annotation?.topicality,
+							boundingPoly: annotation?.boundingPoly,
+							locations: annotation?.locations,
+							properties: annotation?.properties,
+						}))
+					},
 				});
+
 			} catch (error) {
+				// Handle errors based on continueOnFail setting
 				if (this.continueOnFail()) {
 					returnData.push({
-							json: {
-								error: error.message,
-							},
-							pairedItem: itemIndex,
-						});
+						json: {
+							error: error.message,
+						},
+						pairedItem: itemIndex,
+					});
 				} else {
 					throw new NodeOperationError(this.getNode(), error, {
 						itemIndex,
+						description: `Error: ${error.message}`,
 					});
 				}
 			}
@@ -244,4 +159,4 @@ export class GoogleDocumentAI implements INodeType {
 
 		return [returnData];
 	}
-} 
+}
